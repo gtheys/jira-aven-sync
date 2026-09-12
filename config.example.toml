@@ -1,0 +1,29 @@
+# jira-aven-sync config. Copy to config.toml and edit.
+# NEVER put your Jira API token in this file — export JIRA_API_TOKEN instead.
+
+[jira]
+# Your Jira Cloud site URL.
+url = "https://example.atlassian.net"
+# Atlassian account email (must match the API token).
+email = "you@example.com"
+# JQL selecting which issues to sync. Fully user-defined.
+jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+# What to do with aven tasks whose jira-key vanished from the JQL result set:
+#   "ignore" (default) — leave the aven task untouched
+#   "done"             — mark the aven task done
+# missing = "ignore"
+
+# Mappings: Jira value (case-insensitive) -> aven value.
+# Unmapped values fall back to built-in defaults (see README).
+
+[status_map]
+# "In Progress" = "active"
+# "Done" = "done"
+
+[priority_map]
+# "Highest" = "urgent"
+# "Lowest" = "low"
+
+[project_map]
+# Jira project key -> aven project. Unmapped keys are used verbatim.
+# "IMP" = "improvements"

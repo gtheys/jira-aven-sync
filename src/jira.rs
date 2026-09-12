@@ -6,7 +6,14 @@ use serde_json::json;
 
 use crate::config::JiraConfig;
 
-const FIELDS: [&str; 6] = ["summary", "status", "priority", "project", "labels", "description"];
+const FIELDS: [&str; 6] = [
+    "summary",
+    "status",
+    "priority",
+    "project",
+    "labels",
+    "description",
+];
 const MAX_RESULTS: u32 = 100;
 
 pub struct JiraIssue {
@@ -78,8 +85,9 @@ fn next_token(page: &Page) -> Option<String> {
 }
 
 pub fn search(cfg: &JiraConfig) -> anyhow::Result<Vec<JiraIssue>> {
-    let token = std::env::var("JIRA_API_TOKEN")
-        .map_err(|_| anyhow!("JIRA_API_TOKEN not set — check JIRA_API_TOKEN env var / email in config"))?;
+    let token = std::env::var("JIRA_API_TOKEN").map_err(|_| {
+        anyhow!("JIRA_API_TOKEN not set — check JIRA_API_TOKEN env var / email in config")
+    })?;
     let client = reqwest::blocking::Client::new();
     let endpoint = format!("{}/rest/api/3/search/jql", cfg.url.trim_end_matches('/'));
 
@@ -124,11 +132,7 @@ fn convert(i: Issue, base_url: &str) -> JiraIssue {
         url: format!("{}/browse/{}", base_url.trim_end_matches('/'), i.key),
         key: i.key,
         summary: i.fields.summary,
-        status: i
-            .fields
-            .status
-            .and_then(|s| s.name)
-            .unwrap_or_default(),
+        status: i.fields.status.and_then(|s| s.name).unwrap_or_default(),
         priority: i.fields.priority.and_then(|p| p.name),
         project_key: i
             .fields
@@ -206,10 +210,8 @@ mod tests {
 
     #[test]
     fn next_token_continues_on_token_stops_on_is_last() {
-        let with_token: Page = serde_json::from_str(
-            r#"{"issues": [], "nextPageToken": "abc123"}"#,
-        )
-        .unwrap();
+        let with_token: Page =
+            serde_json::from_str(r#"{"issues": [], "nextPageToken": "abc123"}"#).unwrap();
         assert_eq!(next_token(&with_token).as_deref(), Some("abc123"));
 
         let last: Page =
@@ -226,8 +228,8 @@ mod tests {
     #[test]
     #[ignore = "live Jira smoke — needs JIRA_API_TOKEN and config.toml"]
     fn live_jira_search() {
-        let cfg = crate::config::load(std::path::Path::new("config.toml"))
-            .expect("config.toml loads");
+        let cfg =
+            crate::config::load(std::path::Path::new("config.toml")).expect("config.toml loads");
         let issues = search(&cfg.jira).expect("search succeeds against real Jira");
         println!("fetched {} issues", issues.len());
         for issue in issues.iter().take(5) {
@@ -239,6 +241,9 @@ mod tests {
                 issue.summary
             );
         }
-        assert!(!issues.is_empty(), "expected at least one assigned open issue");
+        assert!(
+            !issues.is_empty(),
+            "expected at least one assigned open issue"
+        );
     }
 }

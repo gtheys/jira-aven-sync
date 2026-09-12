@@ -16,7 +16,6 @@ pub struct AvenTask {
     pub title: String,
     pub description: String,
     pub labels: Vec<String>,
-    pub project: String,
     pub jira_status: String,
     pub jira_key: String,
 }
@@ -54,13 +53,11 @@ struct ListItem {
     #[serde(rename = "ref")]
     ref_: String,
     title: String,
-    project: String,
     status: String,
     priority: String,
     #[serde(default)]
     labels: Vec<String>,
 }
-
 /// Spawn `aven` (plain name — must be on PATH), capture stdout, check exit status.
 fn run(args: &[&str]) -> Result<String> {
     let out = Command::new("aven")
@@ -80,7 +77,12 @@ fn run(args: &[&str]) -> Result<String> {
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         let snippet: String = stderr.lines().take(5).collect::<Vec<_>>().join("; ");
-        bail!("aven {} failed ({}): {}", args.join(" "), out.status, snippet);
+        bail!(
+            "aven {} failed ({}): {}",
+            args.join(" "),
+            out.status,
+            snippet
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -112,7 +114,12 @@ fn run_with_stdin(args: &[&str], stdin_data: &str) -> Result<()> {
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         let snippet: String = stderr.lines().take(5).collect::<Vec<_>>().join("; ");
-        bail!("aven {} failed ({}): {}", args.join(" "), out.status, snippet);
+        bail!(
+            "aven {} failed ({}): {}",
+            args.join(" "),
+            out.status,
+            snippet
+        );
     }
     Ok(())
 }
@@ -237,7 +244,6 @@ fn enrich(item: ListItem) -> Result<AvenTask> {
         title: item.title,
         description,
         labels: item.labels,
-        project: item.project,
         jira_status: metadata.get("jira-status").cloned().unwrap_or_default(),
         jira_key: metadata.get("jira-key").cloned().unwrap_or_default(),
     })
@@ -367,7 +373,10 @@ Related total=0
         assert_eq!(desc, "Desc one\n\nPara two");
         assert_eq!(meta.get("jira-key").unwrap(), "TEST-1");
         assert_eq!(meta.get("jira-status").unwrap(), "To Do");
-        assert_eq!(meta.get("jira-url").unwrap(), "https://ex.atlassian.net/browse/TEST-1");
+        assert_eq!(
+            meta.get("jira-url").unwrap(),
+            "https://ex.atlassian.net/browse/TEST-1"
+        );
     }
 
     #[test]

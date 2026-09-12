@@ -44,12 +44,14 @@ fn walk_in(node: &Value, out: &mut String, in_item: bool) {
     // block-level node: start on fresh line; list items get "- "
     if typ == "listItem" {
         out.push_str("- ");
-    } else if matches!(typ, "paragraph" | "heading" | "bulletList" | "orderedList" | "codeBlock")
-        && !(in_item && typ == "paragraph")
+    } else if matches!(
+        typ,
+        "paragraph" | "heading" | "bulletList" | "orderedList" | "codeBlock"
+    ) && !(in_item && typ == "paragraph")
+        && !out.is_empty()
+        && !out.ends_with("\n\n")
     {
-        if !out.is_empty() && !out.ends_with("\n\n") {
-            out.push('\n');
-        }
+        out.push('\n');
     }
     // AIDEV-NOTE: unknown types fall through and just recurse into content (or drop if none)
     if let Some(content) = obj.get("content").and_then(Value::as_array) {

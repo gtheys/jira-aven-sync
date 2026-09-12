@@ -28,7 +28,10 @@ pub enum FieldChange {
     Status(String),
     Priority(String),
     Description(String),
-    Labels { add: Vec<String>, remove: Vec<String> },
+    Labels {
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
     JiraStatus(String),
 }
 
@@ -49,7 +52,10 @@ impl FieldChange {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
     Add,
-    Update { ref_: String, changes: Vec<FieldChange> },
+    Update {
+        ref_: String,
+        changes: Vec<FieldChange>,
+    },
     Skip,
 }
 
@@ -82,14 +88,25 @@ pub fn decide(mapped: &Mapped, existing: Option<&AvenTask>) -> Action {
     have.sort();
     if labels != have {
         changes.push(FieldChange::Labels {
-            add: labels.iter().filter(|l| !have.contains(l)).cloned().collect(),
-            remove: have.iter().filter(|l| !labels.contains(l)).cloned().collect(),
+            add: labels
+                .iter()
+                .filter(|l| !have.contains(l))
+                .cloned()
+                .collect(),
+            remove: have
+                .iter()
+                .filter(|l| !labels.contains(l))
+                .cloned()
+                .collect(),
         });
     }
     if changes.is_empty() {
         Action::Skip
     } else {
-        Action::Update { ref_: t.ref_.clone(), changes }
+        Action::Update {
+            ref_: t.ref_.clone(),
+            changes,
+        }
     }
 }
 
@@ -120,7 +137,10 @@ pub fn map(cfg: &Config, issue: &JiraIssue) -> Mapped {
 // task carrying jira-key metadata whose key left the JQL result set is "missing".
 // Default behavior is `ignore` (no surprise mutations); `missing = "done"` in config
 // closes the aven task. aven-side tasks are never deleted here.
-pub fn compute_missing<'a>(synced: &'a [AvenTask], result_keys: &HashSet<&str>) -> Vec<&'a AvenTask> {
+pub fn compute_missing<'a>(
+    synced: &'a [AvenTask],
+    result_keys: &HashSet<&str>,
+) -> Vec<&'a AvenTask> {
     synced
         .iter()
         .filter(|t| !result_keys.contains(t.jira_key.as_str()))
@@ -150,7 +170,10 @@ pub fn format_summary(added: u32, updated: u32, skipped: u32, missing_done: u32)
 /// Covers `jira` plus all labels carried by the JQL result set.
 /// aven's `label create` is idempotent (exit 0, "already exists" is not an error).
 fn ensure_labels(cfg: &Config, issues: &[JiraIssue]) -> Result<()> {
-    let mut labels: Vec<&str> = issues.iter().flat_map(|i| i.labels.iter().map(String::as_str)).collect();
+    let mut labels: Vec<&str> = issues
+        .iter()
+        .flat_map(|i| i.labels.iter().map(String::as_str))
+        .collect();
     labels.push("jira");
     labels.sort_unstable();
     labels.dedup();
@@ -158,7 +181,10 @@ fn ensure_labels(cfg: &Config, issues: &[JiraIssue]) -> Result<()> {
         aven::create_label(label)?;
     }
     // Projects: aven add --project X fails with "near-match project" if X is unknown.
-    let mut projects: Vec<String> = issues.iter().map(|i| cfg.map_project(&i.project_key)).collect();
+    let mut projects: Vec<String> = issues
+        .iter()
+        .map(|i| cfg.map_project(&i.project_key))
+        .collect();
     projects.sort_unstable();
     projects.dedup();
     for project in projects {
@@ -229,7 +255,13 @@ pub fn run(cfg: &Config, issues: Vec<JiraIssue>, dry_run: bool) -> Result<()> {
         for (key, ref_) in missing_actions(cfg.jira.missing, &missing) {
             println!("MISSING→DONE {key} {ref_}");
             if !dry_run {
-                aven::edit(&ref_, &EditChanges { status: Some("done"), ..Default::default() })?;
+                aven::edit(
+                    &ref_,
+                    &EditChanges {
+                        status: Some("done"),
+                        ..Default::default()
+                    },
+                )?;
                 missing_done += 1;
             }
         }
@@ -264,7 +296,6 @@ mod tests {
             title: "[IMP-1] Fix bug".into(),
             description: "Para one\n\nPara two".into(),
             labels: vec!["backend".into(), "jira".into()],
-            project: "improvements".into(),
             jira_status: "In Progress".into(),
             jira_key: "IMP-1".into(),
         }
