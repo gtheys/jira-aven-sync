@@ -11,10 +11,11 @@ One-way sync of Jira Cloud issues into aven tasks — the aven equivalent of bug
 ## Install
 
 ```
-cargo install --path .
+cargo install --git git@github.com:gtheys/jira-aven-sync.git
 ```
 
-or `cargo build` and use `target/debug/jira-aven-sync`.
+Or from a local clone: `cargo install --path .` (re-run with `--force` to update).
+`cargo build` and `target/debug/jira-aven-sync` works too.
 
 ## Configuration
 
