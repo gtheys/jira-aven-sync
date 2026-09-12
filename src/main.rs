@@ -21,11 +21,16 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     // AIDEV-NOTE: blocking reqwest, no tokio — sequential sync of dozens of issues, latency irrelevant (locked in plan)
     let cli = Cli::parse();
-    let _cfg = config::load(&cli.config)?;
+    let cfg = config::load(&cli.config)?;
+    // AIDEV-NOTE: aven preflight happens lazily via first aven call — its NotFound
+    // error names the install prerequisite, a dedicated which(1) probe is extra code.
+    let issues = jira::search(&cfg.jira)?;
     println!(
-        "jira-aven-sync{} (config: {})",
+        "jira-aven-sync{} (config: {}, {} issues)",
         if cli.dry_run { " --dry-run" } else { "" },
-        cli.config.display()
+        cli.config.display(),
+        issues.len()
     );
+    sync::run(&cfg, issues, cli.dry_run)?;
     Ok(())
 }

@@ -43,10 +43,19 @@ struct Fields {
     summary: String,
     status: Option<Status>,
     priority: Option<Named>,
-    project: Option<Named>,
+    project: Option<Project>,
     #[serde(default)]
     labels: Vec<String>,
     description: Option<serde_json::Value>,
+}
+
+// AIDEV-NOTE: project key != name (e.g. key "DEVOPS", name "DevOps"); project_key
+// feeds project_map lookup + identity fallback, so it MUST be the key. Name is the
+// display string. Fall back to name only if key absent (defensive; API always sends it).
+#[derive(Deserialize)]
+struct Project {
+    key: Option<String>,
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -124,7 +133,7 @@ fn convert(i: Issue, base_url: &str) -> JiraIssue {
         project_key: i
             .fields
             .project
-            .and_then(|p| p.name)
+            .and_then(|p| p.key.or(p.name))
             .unwrap_or_default(),
         labels: i.fields.labels,
         description: i.fields.description,
@@ -155,7 +164,7 @@ mod tests {
                             "summary": "First bug",
                             "status": {"name": "In Progress"},
                             "priority": null,
-                            "project": {"name": "IMP"},
+                            "project": {"key": "DEVOPS", "name": "DevOps"},
                             "labels": ["jira", "backend"]
                         }
                     },
@@ -180,7 +189,8 @@ mod tests {
         assert_eq!(issues[0].summary, "First bug");
         assert_eq!(issues[0].status, "In Progress");
         assert_eq!(issues[0].priority, None);
-        assert_eq!(issues[0].project_key, "IMP");
+        // key, not name — even though name differs ("DevOps")
+        assert_eq!(issues[0].project_key, "DEVOPS");
         assert_eq!(issues[0].labels, vec!["jira", "backend"]);
         assert_eq!(issues[0].description, None);
         assert_eq!(issues[0].url, "https://example.atlassian.net/browse/IMP-1");

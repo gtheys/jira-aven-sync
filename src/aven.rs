@@ -43,6 +43,8 @@ pub struct EditChanges<'a> {
     pub description: Option<&'a str>,
     pub add_labels: &'a [String],
     pub remove_labels: &'a [String],
+    /// Metadata jira-status update (Jira status name). Emitted as --metadata jira-status=…
+    pub jira_status: Option<&'a str>,
 }
 
 // AIDEV-NOTE: aven --json shape pinned empirically 2026-09-12 (list/show --json);
@@ -117,19 +119,28 @@ fn run_with_stdin(args: &[&str], stdin_data: &str) -> Result<()> {
 
 /// Existing aven task carrying metadata jira-key=<key>, or None.
 /// Unparseable/deleted entries are treated as missing → sync recreates (spec edge case).
+// AIDEV-NOTE: aven metadata fields are lazily registered — the field only exists after
+// the first task is created with it. Until then `list --metadata jira-key=X` fails with
+// `unknown-metadata-field`; treated as "nothing synced yet" (all ADD). First real run
+// registers the field via `aven add`, subsequent runs get real lookups.
 pub fn find_by_jira_key(key: &str) -> Result<Option<AvenTask>> {
-    let json = run(&["list", "--metadata", &format!("jira-key={key}"), "--json"])?;
-    let items = parse_list(&json)?;
-    match items.into_iter().next() {
-        None => Ok(None),
-        Some(item) => Ok(Some(enrich(item)?)),
+    match run(&["list", "--metadata", &format!("jira-key={key}"), "--json"]) {
+        Err(e) if e.to_string().contains("unknown-metadata-field") => Ok(None),
+        Err(e) => Err(e),
+        Ok(json) => match parse_list(&json)?.into_iter().next() {
+            None => Ok(None),
+            Some(item) => Ok(Some(enrich(item)?)),
+        },
     }
 }
 
 /// All aven tasks with jira-key metadata (for the missing-detection pass).
 pub fn list_synced() -> Result<Vec<AvenTask>> {
-    let json = run(&["list", "--has-metadata", "jira-key", "--json"])?;
-    parse_list(&json)?.into_iter().map(enrich).collect()
+    match run(&["list", "--has-metadata", "jira-key", "--json"]) {
+        Err(e) if e.to_string().contains("unknown-metadata-field") => Ok(vec![]),
+        Err(e) => Err(e),
+        Ok(json) => parse_list(&json)?.into_iter().map(enrich).collect(),
+    }
 }
 
 pub fn add(input: &NewTask) -> Result<()> {
@@ -178,6 +189,9 @@ pub fn edit(ref_: &str, changes: &EditChanges) -> Result<()> {
     for l in changes.remove_labels {
         args.extend(["--remove-label".into(), l.into()]);
     }
+    if let Some(s) = changes.jira_status {
+        args.extend(["--metadata".into(), format!("jira-status={s}")]);
+    }
     let needs_stdin = changes.description.is_some();
     if needs_stdin {
         args.push("--description-stdin".into());
@@ -188,6 +202,19 @@ pub fn edit(ref_: &str, changes: &EditChanges) -> Result<()> {
     } else {
         run(&argv).map(|_| ())
     }
+}
+
+/// Create a label. Idempotent in aven: already-existing label exits 0 (pinned 2026-09-12
+/// with a throwaway HOME — second `label create` prints created-label again, exit 0).
+pub fn create_label(name: &str) -> Result<()> {
+    run(&["label", "create", name]).map(|_| ())
+}
+
+/// Create a project. Idempotent like label create (pinned 2026-09-12: second
+/// `project create` exits 0). Needed because `add --project X` errors with
+/// "near-match project" when X doesn't exist yet.
+pub fn create_project(key: &str) -> Result<()> {
+    run(&["project", "create", key]).map(|_| ())
 }
 
 fn parse_list(json: &str) -> Result<Vec<ListItem>> {
