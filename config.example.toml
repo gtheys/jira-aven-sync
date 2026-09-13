@@ -27,3 +27,11 @@ jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC
 [project_map]
 # Jira project key -> aven project. Unmapped keys are used verbatim.
 # "IMP" = "improvements"
+
+# Per-project status/priority overrides. Lookup order:
+# [projects.<KEY>.*] -> global [*] -> built-in default.
+# [projects]
+# [projects.IMP.status_map]
+# "In Review" = "active"
+# [projects.IMP.priority_map]
+# "High" = "low"

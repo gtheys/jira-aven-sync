@@ -64,7 +64,19 @@ Idempotent: identity is aven metadata `jira-key=<KEY>`, so a second run right af
 
 ## Mappings and defaults
 
-Mapping keys match case-insensitively; unmapped values fall back to built-in defaults:
+Each synced field is resolved independently:
+
+- **status / priority** — lookup order: `[projects.<KEY>.status_map]`/`[projects.<KEY>.priority_map]`
+  → global `[status_map]`/`[priority_map]` → built-in defaults below. The first hit wins.
+- **project** — `[project_map]` on the Jira project key; unmapped keys are used verbatim.
+
+Matching rules:
+
+- Value keys (Jira status/priority names) match **case-insensitively** — `"In Review"` covers `in review`.
+- Project keys (`<KEY>` in `[projects.<KEY>]` and `[project_map]`) match **exactly** as Jira reports them, e.g. `IMP`.
+- `[projects]` is optional; omitting it keeps the global tables in charge.
+
+Built-in defaults, used when no table maps a value:
 
 | Jira status | aven |
 |---|---|
@@ -81,6 +93,20 @@ Mapping keys match case-insensitively; unmapped values fall back to built-in def
 | medium | medium |
 | low / lowest | low |
 
-Project: `[project_map]` on the Jira project key; unmapped keys are used verbatim.
+Full example — global tables plus a per-project override:
+
+```toml
+[status_map]
+"In Review" = "todo"          # global: every project
+
+[priority_map]
+"Highest" = "urgent"
+
+[project_map]
+"IMP" = "improvements"        # aven project name
+
+[projects.IMP.status_map]
+"In Review" = "active"        # wins over the global table for IMP only
+```
 
 Per new task, the tool writes metadata `jira-key`, `jira-url`, `jira-status`, and always adds the `jira` label plus the issue's Jira labels.
