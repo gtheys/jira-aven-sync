@@ -178,7 +178,7 @@ fn ensure_labels(cfg: &Config, issues: &[JiraIssue]) -> Result<()> {
     labels.sort_unstable();
     labels.dedup();
     for label in labels {
-        aven::create_label(label)?;
+        aven::create_label(cfg.aven.workspace.as_deref(), label)?;
     }
     // Projects: aven add --project X fails with "near-match project" if X is unknown.
     let mut projects: Vec<String> = issues
@@ -188,7 +188,7 @@ fn ensure_labels(cfg: &Config, issues: &[JiraIssue]) -> Result<()> {
     projects.sort_unstable();
     projects.dedup();
     for project in projects {
-        aven::create_project(&project)?;
+        aven::create_project(cfg.aven.workspace.as_deref(), &project)?;
     }
     Ok(())
 }
@@ -200,13 +200,13 @@ pub fn run(cfg: &Config, issues: Vec<JiraIssue>, dry_run: bool) -> Result<()> {
     let (mut added, mut updated, mut skipped) = (0u32, 0u32, 0u32);
     for issue in &issues {
         let mapped = map(cfg, issue);
-        let existing = aven::find_by_jira_key(&mapped.key)?;
+        let existing = aven::find_by_jira_key(cfg.aven.workspace.as_deref(), &mapped.key)?;
         match decide(&mapped, existing.as_ref()) {
             Action::Add => {
                 added += 1;
                 println!("ADD {}", mapped.key);
                 if !dry_run {
-                    aven::add(&NewTask {
+                    aven::add(cfg.aven.workspace.as_deref(), &NewTask {
                         title: &mapped.title,
                         project: &mapped.project,
                         status: &mapped.status,
@@ -238,7 +238,7 @@ pub fn run(cfg: &Config, issues: Vec<JiraIssue>, dry_run: bool) -> Result<()> {
                             }
                         }
                     }
-                    aven::edit(&ref_, &edit)?;
+                    aven::edit(cfg.aven.workspace.as_deref(), &ref_, &edit)?;
                 }
             }
             Action::Skip => {
@@ -250,12 +250,13 @@ pub fn run(cfg: &Config, issues: Vec<JiraIssue>, dry_run: bool) -> Result<()> {
     let mut missing_done = 0u32;
     let keys: HashSet<&str> = issues.iter().map(|i| i.key.as_str()).collect();
     if cfg.jira.missing == MissingBehavior::Done {
-        let synced = aven::list_synced()?;
+        let synced = aven::list_synced(cfg.aven.workspace.as_deref())?;
         let missing = compute_missing(&synced, &keys);
         for (key, ref_) in missing_actions(cfg.jira.missing, &missing) {
             println!("MISSING→DONE {key} {ref_}");
             if !dry_run {
                 aven::edit(
+                    cfg.aven.workspace.as_deref(),
                     &ref_,
                     &EditChanges {
                         status: Some("done"),

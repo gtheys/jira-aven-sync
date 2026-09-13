@@ -35,3 +35,9 @@ jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC
 # "In Review" = "active"
 # [projects.IMP.priority_map]
 # "High" = "low"
+
+# Optional aven settings.
+[aven]
+# Target aven workspace. If omitted, aven infers the workspace from the
+# current working directory.
+# workspace = "salaryhero"

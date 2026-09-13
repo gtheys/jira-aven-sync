@@ -16,6 +16,13 @@ pub struct Config {
     pub project_map: HashMap<String, String>,
     #[serde(default)]
     pub projects: HashMap<String, ProjectOverrides>,
+    #[serde(default)]
+    pub aven: AvenConfig,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct AvenConfig {
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -115,6 +122,18 @@ mod tests {
 
     fn cfg(toml_str: &str) -> Config {
         toml::from_str(toml_str).unwrap()
+    }
+
+    #[test]
+    fn aven_section_parses_workspace() {
+        let c = cfg("[jira]\nurl='u'\nemail='e'\njql='j'\n[aven]\nworkspace='salaryhero'\n");
+        assert_eq!(c.aven.workspace.as_deref(), Some("salaryhero"));
+    }
+
+    #[test]
+    fn missing_aven_section_yields_none() {
+        let c = cfg("[jira]\nurl='u'\nemail='e'\njql='j'\n");
+        assert_eq!(c.aven.workspace, None);
     }
 
     #[test]

@@ -42,6 +42,9 @@ jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC
 
 [project_map]
 # "IMP" = "improvements"
+
+[aven]
+# workspace = "salaryhero"   # optional; default: aven infers workspace from cwd
 ```
 
 ## Usage

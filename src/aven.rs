@@ -58,6 +58,19 @@ struct ListItem {
     #[serde(default)]
     labels: Vec<String>,
 }
+/// Global `--workspace` flag must precede the subcommand (verified:
+/// `aven --workspace personal list`). None = aven infers workspace from cwd.
+fn with_ws<'a>(ws: Option<&'a str>, args: &[&'a str]) -> Vec<&'a str> {
+    match ws {
+        Some(w) => {
+            let mut v = vec!["--workspace", w];
+            v.extend_from_slice(args);
+            v
+        }
+        None => args.to_vec(),
+    }
+}
+
 /// Spawn `aven` (plain name — must be on PATH), capture stdout, check exit status.
 fn run(args: &[&str]) -> Result<String> {
     let out = Command::new("aven")
@@ -130,27 +143,30 @@ fn run_with_stdin(args: &[&str], stdin_data: &str) -> Result<()> {
 // the first task is created with it. Until then `list --metadata jira-key=X` fails with
 // `unknown-metadata-field`; treated as "nothing synced yet" (all ADD). First real run
 // registers the field via `aven add`, subsequent runs get real lookups.
-pub fn find_by_jira_key(key: &str) -> Result<Option<AvenTask>> {
-    match run(&["list", "--metadata", &format!("jira-key={key}"), "--json"]) {
+pub fn find_by_jira_key(ws: Option<&str>, key: &str) -> Result<Option<AvenTask>> {
+    let q = format!("jira-key={key}");
+    let argv = with_ws(ws, &["list", "--metadata", &q, "--json"]);
+    match run(&argv) {
         Err(e) if e.to_string().contains("unknown-metadata-field") => Ok(None),
         Err(e) => Err(e),
         Ok(json) => match parse_list(&json)?.into_iter().next() {
             None => Ok(None),
-            Some(item) => Ok(Some(enrich(item)?)),
+            Some(item) => Ok(Some(enrich(ws, item)?)),
         },
     }
 }
 
 /// All aven tasks with jira-key metadata (for the missing-detection pass).
-pub fn list_synced() -> Result<Vec<AvenTask>> {
-    match run(&["list", "--has-metadata", "jira-key", "--json"]) {
+pub fn list_synced(ws: Option<&str>) -> Result<Vec<AvenTask>> {
+    let argv = with_ws(ws, &["list", "--has-metadata", "jira-key", "--json"]);
+    match run(&argv) {
         Err(e) if e.to_string().contains("unknown-metadata-field") => Ok(vec![]),
         Err(e) => Err(e),
-        Ok(json) => parse_list(&json)?.into_iter().map(enrich).collect(),
+        Ok(json) => parse_list(&json)?.into_iter().map(|i| enrich(ws, i)).collect(),
     }
 }
 
-pub fn add(input: &NewTask) -> Result<()> {
+pub fn add(ws: Option<&str>, input: &NewTask) -> Result<()> {
     let mut args = vec![
         "add".to_string(),
         "--project".into(),
@@ -176,10 +192,10 @@ pub fn add(input: &NewTask) -> Result<()> {
     // title last (positional)
     let mut argv = argrefs;
     argv.push(input.title);
-    run_with_stdin(&argv, input.description)
+    run_with_stdin(&with_ws(ws, &argv), input.description)
 }
 
-pub fn edit(ref_: &str, changes: &EditChanges) -> Result<()> {
+pub fn edit(ws: Option<&str>, ref_: &str, changes: &EditChanges) -> Result<()> {
     let mut args: Vec<String> = vec!["edit".into(), ref_.into()];
     if let Some(t) = changes.title {
         args.extend(["--title".into(), t.into()]);
@@ -205,23 +221,25 @@ pub fn edit(ref_: &str, changes: &EditChanges) -> Result<()> {
     }
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
     if let Some(d) = changes.description {
-        run_with_stdin(&argv, d)
+        run_with_stdin(&with_ws(ws, &argv), d)
     } else {
-        run(&argv).map(|_| ())
+        run(&with_ws(ws, &argv)).map(|_| ())
     }
 }
 
 /// Create a label. Idempotent in aven: already-existing label exits 0 (pinned 2026-09-12
 /// with a throwaway HOME — second `label create` prints created-label again, exit 0).
-pub fn create_label(name: &str) -> Result<()> {
-    run(&["label", "create", name]).map(|_| ())
+pub fn create_label(ws: Option<&str>, name: &str) -> Result<()> {
+    let argv = with_ws(ws, &["label", "create", name]);
+    run(&argv).map(|_| ())
 }
 
 /// Create a project. Idempotent like label create (pinned 2026-09-12: second
 /// `project create` exits 0). Needed because `add --project X` errors with
 /// "near-match project" when X doesn't exist yet.
-pub fn create_project(key: &str) -> Result<()> {
-    run(&["project", "create", key]).map(|_| ())
+pub fn create_project(ws: Option<&str>, key: &str) -> Result<()> {
+    let argv = with_ws(ws, &["project", "create", key]);
+    run(&argv).map(|_| ())
 }
 
 fn parse_list(json: &str) -> Result<Vec<ListItem>> {
@@ -234,8 +252,9 @@ fn parse_list(json: &str) -> Result<Vec<ListItem>> {
 /// metadata field_id=... key=K\nvalue<<EOF ... EOF blocks. Fill in what list --json lacks.
 // ponytail: naive line parser; a description containing a bare `EOF` line truncates it —
 // upgrade to a JSON show output if aven ever gains `show --json --metadata`.
-fn enrich(item: ListItem) -> Result<AvenTask> {
-    let full = run(&["show", &item.ref_, "--full"])?;
+fn enrich(ws: Option<&str>, item: ListItem) -> Result<AvenTask> {
+    let argv = with_ws(ws, &["show", &item.ref_, "--full"]);
+    let full = run(&argv)?;
     let (description, metadata) = parse_full(&full);
     Ok(AvenTask {
         ref_: item.ref_,
@@ -376,6 +395,19 @@ Related total=0
         assert_eq!(
             meta.get("jira-url").unwrap(),
             "https://ex.atlassian.net/browse/TEST-1"
+        );
+    }
+
+    #[test]
+    fn with_ws_none_leaves_args() {
+        assert_eq!(with_ws(None, &["list", "--json"]), vec!["list", "--json"]);
+    }
+
+    #[test]
+    fn with_ws_some_prefixes_flag() {
+        assert_eq!(
+            with_ws(Some("salaryhero"), &["list", "--json"]),
+            vec!["--workspace", "salaryhero", "list", "--json"]
         );
     }
 
