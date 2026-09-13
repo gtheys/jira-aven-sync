@@ -2,6 +2,15 @@
 name = "jira-aven-sync"
 version = "0.1.0"
 edition = "2021"
+description = "One-way sync of Jira Cloud issues into aven tasks"
+license = "MIT"
+repository = "https://github.com/gtheys/jira-aven-sync"
+homepage = "https://github.com/gtheys/jira-aven-sync"
+readme = "README.md"
+keywords = ["jira", "aven", "sync", "cli"]
+categories = ["command-line-utilities"]
+# ponytail: keep plans/lint docs out of the crates.io tarball
+exclude = [".pi/**", ".aislop/**"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

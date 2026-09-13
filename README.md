@@ -10,6 +10,14 @@ One-way sync of Jira Cloud issues into aven tasks — the aven equivalent of bug
 
 ## Install
 
+From crates.io:
+
+```
+cargo install jira-aven-sync
+```
+
+Or straight from git:
+
 ```
 cargo install --git git@github.com:gtheys/jira-aven-sync.git
 ```
