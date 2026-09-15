@@ -36,6 +36,10 @@ jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC
 # [projects.IMP.priority_map]
 # "High" = "low"
 
+# Status labels: automatic, no config. When a mapping collapses a Jira status into
+# a coarser aven status (e.g. "In Test" = "done"), sync adds label
+# `jira-status:in-test` so the real Jira status stays filterable in aven.
+
 # Optional aven settings.
 [aven]
 # Target aven workspace. If omitted, aven infers the workspace from the
