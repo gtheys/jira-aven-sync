@@ -81,6 +81,17 @@ Each synced field is resolved independently:
   → global `[status_map]`/`[priority_map]` → built-in defaults below. The first hit wins.
 - **project** — `[project_map]` on the Jira project key; unmapped keys are used verbatim.
 
+### Status labels
+
+Jira statuses are richer than aven's (`todo/active/done/canceled`). When the mapping
+collapses a Jira status into a coarser aven status, sync adds a label preserving the
+real status: `jira-status:<slug>` (lowercase, spaces → dashes). Example — with
+`"In Test" = "done"` mapped, the aven task gets status `done` plus label
+`jira-status:in-test`. No label is added when nothing is lost ("To Do" → `todo`,
+"Done" → `done`). The label is sync-owned like all synced labels: removed again when
+the Jira status stops collapsing. The raw status is always in `jira-status` metadata
+too, label or not.
+
 Matching rules:
 
 - Value keys (Jira status/priority names) match **case-insensitively** — `"In Review"` covers `in review`.

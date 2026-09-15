@@ -110,10 +110,34 @@ pub fn decide(mapped: &Mapped, existing: Option<&AvenTask>) -> Action {
     }
 }
 
+// AIDEV-NOTE: collapse rule — label only when mapping loses info. Slug = lowercase,
+// whitespace→dashes; compare dash-stripped slug vs mapped aven status, so "To Do"→todo
+// yields NO label (todo == todo) but "In Test"→done yields `jira-status:in-test`.
+// ponytail: naive string compare, not a semantic equivalence set — a Jira status
+// literally named "Done" maps to done with no label, which is the desired behavior.
+/// Some("jira-status:in-test") when mapped status loses info vs raw Jira status.
+fn status_label(cfg: &Config, issue: &JiraIssue) -> Option<String> {
+    let slug = issue
+        .status
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-");
+    let mapped = cfg.map_status(&issue.project_key, &issue.status);
+    if slug.replace('-', "") != mapped {
+        Some(format!("jira-status:{slug}"))
+    } else {
+        None
+    }
+}
+
 /// Config mapping: Jira issue -> aven-ready Mapped. Pure.
 pub fn map(cfg: &Config, issue: &JiraIssue) -> Mapped {
     let mut labels = issue.labels.clone();
     labels.push("jira".into());
+    if let Some(l) = status_label(cfg, issue) {
+        labels.push(l);
+    }
     labels.sort();
     labels.dedup();
     Mapped {
@@ -170,14 +194,15 @@ pub fn format_summary(added: u32, updated: u32, skipped: u32, missing_done: u32)
 /// Covers `jira` plus all labels carried by the JQL result set.
 /// aven's `label create` is idempotent (exit 0, "already exists" is not an error).
 fn ensure_labels(cfg: &Config, issues: &[JiraIssue]) -> Result<()> {
-    let mut labels: Vec<&str> = issues
+    let mut labels: Vec<String> = issues
         .iter()
-        .flat_map(|i| i.labels.iter().map(String::as_str))
+        .flat_map(|i| i.labels.iter().cloned())
+        .chain(issues.iter().filter_map(|i| status_label(cfg, i)))
         .collect();
-    labels.push("jira");
+    labels.push("jira".into());
     labels.sort_unstable();
     labels.dedup();
-    for label in labels {
+    for label in &labels {
         aven::create_label(cfg.aven.workspace.as_deref(), label)?;
     }
     // Projects: aven add --project X fails with "near-match project" if X is unknown.
@@ -472,7 +497,7 @@ mod tests {
         assert_eq!(m.status, "active"); // default map
         assert_eq!(m.priority, "urgent"); // default map: Highest -> urgent
         assert_eq!(m.project, "IMP"); // identity fallback
-        assert_eq!(m.labels, vec!["backend", "jira"]);
+        assert_eq!(m.labels, vec!["backend", "jira", "jira-status:in-progress"]);
         assert_eq!(m.jira_status, "In Progress");
         assert_eq!(m.description, "hello");
     }
@@ -527,6 +552,51 @@ mod tests {
     fn map_dedupes_jira_label() {
         let mut i = issue();
         i.labels = vec!["jira".into()];
-        assert_eq!(map(&cfg(), &i).labels, vec!["jira"]);
+        assert_eq!(map(&cfg(), &i).labels, vec!["jira", "jira-status:in-progress"]);
+    }
+
+    #[test]
+    fn collapse_adds_status_label() {
+        let c: Config = toml::from_str(
+            "[jira]\nurl='u'\nemail='e'\njql='j'\n[status_map]\n'In Test'='done'\n",
+        )
+        .unwrap();
+        let mut i = issue();
+        i.status = "In Test".into();
+        let m = map(&c, &i);
+        assert_eq!(m.status, "done");
+        assert!(m.labels.contains(&"jira-status:in-test".to_string()));
+    }
+
+    #[test]
+    fn no_label_when_slug_equals_mapped() {
+        // "To Do" -> slug "to-do" -> dash-stripped "todo" == mapped "todo"
+        let mut i = issue();
+        i.status = "To Do".into();
+        assert_eq!(map(&cfg(), &i).labels, vec!["backend", "jira"]);
+        // "Done" -> done, exact match
+        let mut i = issue();
+        i.status = "Done".into();
+        assert_eq!(map(&cfg(), &i).labels, vec!["backend", "jira"]);
+    }
+
+    #[test]
+    fn uncollapse_removes_status_label() {
+        // Jira status moves "In Test" -> "Done": label must be removed via drift.
+        let mut m = mapped();
+        m.status = "done".into();
+        m.jira_status = "Done".into();
+        m.labels = vec!["backend".into(), "jira".into()];
+        let mut t = task();
+        t.labels = vec!["backend".into(), "jira".into(), "jira-status:in-test".into()];
+        match decide(&m, Some(&t)) {
+            Action::Update { changes, .. } => assert!(
+                changes.contains(&FieldChange::Labels {
+                    add: vec![],
+                    remove: vec!["jira-status:in-test".into()],
+                })
+            ),
+            a => panic!("expected Update, got {a:?}"),
+        }
     }
 }
