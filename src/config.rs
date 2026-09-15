@@ -3,7 +3,7 @@
 use anyhow::Context;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -110,6 +110,26 @@ fn default_priority(key: &str) -> String {
     .into()
 }
 
+// AIDEV-NOTE: XDG base dir spec — default config is $XDG_CONFIG_HOME/jira-aven-sync/config.toml
+// (or ~/.config/... when unset), used only when that file exists; else ./config.toml (back-compat).
+pub fn resolve_default_config() -> PathBuf {
+    let xdg = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    resolve_default_config_at(xdg, home)
+}
+
+fn resolve_default_config_at(xdg: Option<PathBuf>, home: Option<PathBuf>) -> PathBuf {
+    if let Some(base) = xdg.or_else(|| home.map(|h| h.join(".config"))) {
+        let candidate = base.join("jira-aven-sync").join("config.toml");
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    PathBuf::from("config.toml")
+}
+
 pub fn load(path: &Path) -> anyhow::Result<Config> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read config file {}", path.display()))?;
@@ -212,6 +232,48 @@ mod tests {
     fn load_errors_on_missing_file() {
         let err = load(Path::new("/nonexistent/config.toml")).unwrap_err();
         assert!(err.to_string().contains("/nonexistent/config.toml"));
+    }
+
+    fn tmpdir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn default_config_prefers_existing_xdg_path() {
+        let xdg = tmpdir("jas-xdg-exists");
+        let app = xdg.join("jira-aven-sync");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("config.toml"), "").unwrap();
+        let got = resolve_default_config_at(Some(xdg.clone()), None);
+        assert_eq!(got, app.join("config.toml"));
+        std::fs::remove_dir_all(&xdg).ok();
+    }
+
+    #[test]
+    fn default_config_uses_home_dot_config_when_xdg_unset() {
+        let home = tmpdir("jas-home-config");
+        let app = home.join(".config").join("jira-aven-sync");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("config.toml"), "").unwrap();
+        let got = resolve_default_config_at(None, Some(home.clone()));
+        assert_eq!(got, app.join("config.toml"));
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn default_config_falls_back_to_local_when_xdg_file_missing() {
+        let xdg = tmpdir("jas-xdg-missing");
+        assert_eq!(
+            resolve_default_config_at(Some(xdg.clone()), None),
+            std::path::PathBuf::from("config.toml")
+        );
+        assert_eq!(
+            resolve_default_config_at(None, None),
+            std::path::PathBuf::from("config.toml")
+        );
+        std::fs::remove_dir_all(&xdg).ok();
     }
 
     #[test]

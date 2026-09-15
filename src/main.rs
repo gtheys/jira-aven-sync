@@ -13,22 +13,23 @@ struct Cli {
     #[arg(long)]
     dry_run: bool,
 
-    /// Path to TOML config file
-    #[arg(long, value_name = "PATH", default_value = "config.toml")]
-    config: std::path::PathBuf,
+    /// Path to TOML config file (default: XDG path if it exists, else ./config.toml)
+    #[arg(long, value_name = "PATH")]
+    config: Option<std::path::PathBuf>,
 }
 
 fn main() -> anyhow::Result<()> {
     // AIDEV-NOTE: blocking reqwest, no tokio — sequential sync of dozens of issues, latency irrelevant (locked in plan)
     let cli = Cli::parse();
-    let cfg = config::load(&cli.config)?;
+    let config_path = cli.config.unwrap_or_else(config::resolve_default_config);
+    let cfg = config::load(&config_path)?;
     // AIDEV-NOTE: aven preflight happens lazily via first aven call — its NotFound
     // error names the install prerequisite, a dedicated which(1) probe is extra code.
     let issues = jira::search(&cfg.jira)?;
     println!(
         "jira-aven-sync{} (config: {}, {} issues)",
         if cli.dry_run { " --dry-run" } else { "" },
-        cli.config.display(),
+        config_path.display(),
         issues.len()
     );
     sync::run(&cfg, issues, cli.dry_run)?;

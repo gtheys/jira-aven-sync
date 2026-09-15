@@ -27,7 +27,7 @@ Or from a local clone: `cargo install --path .` (re-run with `--force` to update
 
 ## Configuration
 
-Copy `config.example.toml` to `config.toml` and edit. The API token is **never** in the config file — export it:
+Copy `config.example.toml` to `~/.config/jira-aven-sync/config.toml` (or `./config.toml`) and edit. The API token is **never** in the config file — export it:
 
 ```
 export JIRA_API_TOKEN="your-token"
@@ -62,7 +62,7 @@ jira-aven-sync [--dry-run] [--config path]
 ```
 
 - `--dry-run` — print intended actions, mutate nothing
-- `--config <path>` — config file (default `config.toml`)
+- `--config <path>` — config file. Default: `$XDG_CONFIG_HOME/jira-aven-sync/config.toml` (or `~/.config/...` when XDG_CONFIG_HOME is unset) if that file exists, else `./config.toml`
 
 Output is one line per action plus a summary:
 
